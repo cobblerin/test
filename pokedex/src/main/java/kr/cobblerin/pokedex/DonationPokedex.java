@@ -1,7 +1,6 @@
 package kr.cobblerin.pokedex;
 
 import com.cobblemon.mod.common.Cobblemon;
-import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.api.storage.PokemonStore;
 import com.cobblemon.mod.common.battles.BattleRegistry;
 import com.cobblemon.mod.common.pokemon.Pokemon;
@@ -11,6 +10,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.entity.player.PlayerInventory;
@@ -18,7 +18,6 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
-import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -35,11 +34,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static kr.cobblerin.pokedex.DexProtocol.ENDS;
 import static net.minecraft.server.command.CommandManager.literal;
 
 public final class DonationPokedex implements ModInitializer {
     static final Logger LOG = LoggerFactory.getLogger("DonationPokedex");
-    static final int[] ENDS = {0, 151, 251, 386, 493, 649, 721, 809, 905, 1025};
     static final List<Milestone> MILESTONES = List.of(
             new Milestone("gen1", "1세대 완성", 151, 1, "cobblemon:ultra_ball", 16),
             new Milestone("total25", "전체 25%", 257, 0, "cobblemon:great_ball", 16),
@@ -53,6 +52,25 @@ public final class DonationPokedex implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        DexNetworking.register();
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> initializeRewards());
+
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            try {
+                reconcile(handler.player, ledger(handler.player).read());
+            } catch (IOException | RuntimeException exception) {
+                report(handler.player, exception);
+            }
+        });
+
+        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
+            var command = dispatcher.register(literal("donationdex").executes(context ->
+                    DexNetworking.open(context.getSource().getPlayerOrThrow())));
+            dispatcher.register(literal("pokedex").executes(command.getCommand()));
+        });
+    }
+
+    private static void initializeRewards() {
         try {
             Files.createDirectories(REWARD_CONFIG.getParent());
             if (Files.notExists(REWARD_CONFIG)) {
@@ -65,39 +83,6 @@ public final class DonationPokedex implements ModInitializer {
         } catch (IOException exception) {
             LOG.error("Could not initialize Pokédex rewards", exception);
         }
-
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            try {
-                reconcile(handler.player, ledger(handler.player).read());
-            } catch (IOException | RuntimeException exception) {
-                report(handler.player, exception);
-            }
-        });
-
-        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
-            var command = dispatcher.register(literal("donationdex").executes(context ->
-                    open(context.getSource().getPlayerOrThrow())));
-            dispatcher.register(literal("pokedex").executes(command.getCommand()));
-        });
-    }
-
-    private int open(ServerPlayerEntity player) {
-        try {
-            if (inBattle(player)) {
-                message(player, "배틀이 끝난 후 도감을 열어 주세요.");
-                return 0;
-            }
-            DonationLedger ledger = ledger(player);
-            Map<Integer, UUID> registrations = ledger.read();
-            reconcile(player, registrations);
-            player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
-                    (syncId, inventory, owner) -> new PokedexMenu(syncId, player, ledger, registrations),
-                    Text.literal("포켓몬 납부 도감")));
-            return 1;
-        } catch (IOException | RuntimeException exception) {
-            report(player, exception);
-            return 0;
-        }
     }
 
     static DonationLedger ledger(ServerPlayerEntity player) {
@@ -106,7 +91,7 @@ public final class DonationPokedex implements ModInitializer {
         return new DonationLedger(directory.resolve(player.getUuidAsString() + ".json"));
     }
 
-    private static void reconcile(ServerPlayerEntity player, Map<Integer, UUID> registrations) throws IOException {
+    static void reconcile(ServerPlayerEntity player, Map<Integer, UUID> registrations) throws IOException {
         if (registrations.isEmpty()) {
             return;
         }
@@ -123,17 +108,15 @@ public final class DonationPokedex implements ModInitializer {
         }
     }
 
-    static void donate(ServerPlayerEntity player, DonationLedger ledger, Map<Integer, UUID> registrations,
+    static String donate(ServerPlayerEntity player, DonationLedger ledger, Map<Integer, UUID> registrations,
                        int number, UUID uuid) throws IOException {
         if (registrations.containsKey(number)) {
-            message(player, "이미 등록한 포켓몬입니다.");
-            return;
+            return "이미 등록한 포켓몬입니다.";
         }
         var stores = stores(player);
         Owned owned = findOwned(stores, uuid);
         if (owned == null || number(owned.pokemon()) != number || !canDonate(owned.pokemon()) || inBattle(player)) {
-            message(player, "이 포켓몬은 지금 납부할 수 없습니다.");
-            return;
+            return "이 포켓몬은 지금 납부할 수 없습니다.";
         }
 
         Map<Integer, UUID> updated = new HashMap<>(registrations);
@@ -152,7 +135,7 @@ public final class DonationPokedex implements ModInitializer {
             LOG.warn("Cobblemon reported an error after removing Pokémon {}", uuid, exception);
         }
         registrations.put(number, uuid);
-        message(player, "포켓몬을 도감에 영구 등록했습니다.");
+        return "포켓몬을 도감에 영구 등록했습니다.";
     }
 
     static boolean inBattle(ServerPlayerEntity player) {
@@ -170,18 +153,6 @@ public final class DonationPokedex implements ModInitializer {
             return -1;
         }
         return species.getNationalPokedexNumber();
-    }
-
-    static Text speciesName(int number) {
-        var species = PokemonSpecies.getByPokedexNumber(number, "cobblemon");
-        return species == null ? Text.literal("포켓몬") :
-                Text.translatableWithFallback("cobblemon.species." + species.getResourceIdentifier().getPath() + ".name",
-                        species.getName());
-    }
-
-    static boolean implemented(int number) {
-        var species = PokemonSpecies.getByPokedexNumber(number, "cobblemon");
-        return species != null && species.getImplemented();
     }
 
     static List<PokemonStore<?>> stores(ServerPlayerEntity player) {
@@ -228,31 +199,31 @@ public final class DonationPokedex implements ModInitializer {
         }
     }
 
-    static void claim(ServerPlayerEntity player, Map<Integer, UUID> registrations, Milestone milestone)
+    static String claim(ServerPlayerEntity player, Map<Integer, UUID> registrations, Milestone milestone)
             throws IOException {
         String tag = milestone.tag();
-        if (player.getCommandTags().contains(tag) || registered(registrations, milestone.generation()) < milestone.required()) {
-            return;
+        if (player.getCommandTags().contains(tag)) {
+            return "이미 수령한 보상입니다.";
+        }
+        if (registered(registrations, milestone.generation()) < milestone.required()) {
+            return "보상 수령 조건을 아직 달성하지 않았습니다.";
         }
         ItemStack reward = reward(milestone);
         if (reward.isEmpty()) {
-            message(player, "서버에서 이 보상을 설정하지 않았습니다.");
-            return;
+            return "서버에서 이 보상을 설정하지 않았습니다.";
         }
         PlayerInventory inventory = player.getInventory();
         int slot = inventory.getEmptySlot();
         if (slot < 0) {
-            message(player, "인벤토리에 빈 칸을 한 칸 만들어 주세요.");
-            return;
+            return "인벤토리에 빈 칸을 한 칸 만들어 주세요.";
         }
         // Both inventory and command tags are saved in the same vanilla player data file.
         if (!player.addCommandTag(tag)) {
-            message(player, "보상 수령 상태를 기록할 수 없습니다.");
-            return;
+            return "보상 수령 상태를 기록할 수 없습니다.";
         }
         inventory.setStack(slot, reward);
         inventory.markDirty();
-        message(player, milestone.label() + " 보상을 받았습니다.");
+        return milestone.label() + " 보상을 받았습니다.";
     }
 
     static void message(ServerPlayerEntity player, String text) {

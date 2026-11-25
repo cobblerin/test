@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "cobblemon_donation_pokedex",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Cobblemon Donation Pokédex",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
-    "main": ["kr.cobblerin.pokedex.DonationPokedex"]
+    "main": ["kr.cobblerin.pokedex.DonationPokedex"],
+    "client": ["kr.cobblerin.pokedex.DexClient"]
   },
   "depends": {
     "fabricloader": ">=0.17.2",
