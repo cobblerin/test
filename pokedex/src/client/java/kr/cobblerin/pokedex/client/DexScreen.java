@@ -25,8 +25,11 @@ final class DexScreen extends Screen {
     private static final int MUTED = 0xffc4c7c9;
     private static final int GOLD = 0xffffdf93;
     private static final int GREEN = 0xff99d4a4;
-    private static final int CASE = 0xff686a6c;
-    private static final int CASE_EDGE = 0xffb1b2b3;
+    private static final int CASE = 0xff87363d;
+    private static final int CASE_EDGE = 0xffdf8990;
+    private static final int RED_PANEL = 0xffab454e;
+    private static final int RED_SHADOW = 0xff562831;
+    private static final int MODEL_WELL = 0xff353739;
     private static final int SHADOW = 0xff202123;
     private static final int RECESS = 0xff2d2e30;
     private static final int RIDGE = 0xff87898b;
@@ -155,58 +158,80 @@ final class DexScreen extends Screen {
 
     private void frame(DrawContext draw) {
         panelCase(draw, new Box(0, 0, WIDTH, HEIGHT));
+        draw.fill(9, 7, WIDTH - 9, 43, RED_PANEL);
+        draw.fill(11, 8, WIDTH - 11, 9, CASE_EDGE);
+        draw.fill(10, 42, WIDTH - 10, 44, RED_SHADOW);
         inset(draw, new Box(11, 45, WIDTH - 22, 300));
-        draw.fill(20, 8, 184, 10, CASE_EDGE);
-        for (int i = 0; i < 6; i++) {
-            int x = 518 + i * 8;
-            draw.fill(x, 25, x + 3, 28, 0xff454648);
-        }
+
+        stepped(draw, new Box(20, 13, 26, 25), RED_SHADOW);
+        stepped(draw, new Box(22, 15, 22, 21), 0xffc8d7de);
+        stepped(draw, new Box(24, 17, 18, 17), 0xff5488a1);
+        draw.fill(28, 20, 34, 23, 0xffbbdee8);
+
         String heading = switch (mode) {
-            case CATALOGUE -> "포켓몬 납부 도감";
+            case CATALOGUE -> "포켓몬 도감";
             case CANDIDATES -> "납부 개체 선택";
             case REWARDS -> "도감 완성 보상";
         };
-        label(draw, heading, 23, 22, TEXT, 240);
+        label(draw, heading, 54, 22, TEXT, 217);
     }
 
     private void renderCatalogue(DrawContext draw, float delta) {
-        stat(draw, 20, "전체 등록", progress(0), true);
-        stat(draw, 221, generation + "세대 등록", progress(generation), false);
-        button(draw, new Box(422, 52, 124, 36), "완성 보상", false, overview != null && idle(), () -> {
+        for (int gen = 1; gen <= 9; gen++) {
+            int target = gen;
+            button(draw, new Box(20 + (gen - 1) * 69, 54, 68, 23), gen + "세대",
+                    gen == generation, idle(), () -> { generation = target; page = 0; });
+        }
+
+        surface(draw, new Box(20, 86, 148, 249), false);
+        stat(draw, new Box(27, 96, 134, 43), "전국도감", progress(0), true);
+        stat(draw, new Box(27, 146, 134, 43), generation + "세대 도감", progress(generation), false);
+        draw.fill(27, 195, 161, 196, RIDGE);
+        for (Filter option : Filter.values()) {
+            button(draw, new Box(27, 202 + option.ordinal() * 23, 134, 20), option.label,
+                    filter == option, idle(), () -> { filter = option; page = 0; });
+        }
+        draw.fill(27, 275, 161, 276, RIDGE);
+        button(draw, new Box(27, 282, 134, 22), "완성 보상", false, overview != null && idle(), () -> {
             mode = Mode.REWARDS;
             message = null;
         });
-        button(draw, new Box(554, 52, 86, 36), "새로고침", false, idle(), this::refresh);
-        for (int gen = 1; gen <= 9; gen++) {
-            int target = gen;
-            button(draw, new Box(20 + (gen - 1) * 69, 98, 68, 22), gen + "세대",
-                    gen == generation, idle(), () -> { generation = target; page = 0; });
-        }
-        for (Filter option : Filter.values()) {
-            button(draw, new Box(20 + option.ordinal() * 94, 128, 88, 20), option.label,
-                    filter == option, idle(), () -> { filter = option; page = 0; });
-        }
+        button(draw, new Box(27, 308, 134, 20), "새로고침", false, idle(), this::refresh);
 
         List<Integer> entries = catalogue();
         int pages = pageCount(entries.size());
         page = Math.min(page, pages - 1);
         if (overview != null && entries.isEmpty()) {
-            label(draw, "이 조건에 해당하는 포켓몬이 없습니다.", 220, 237, MUTED, 265);
+            inset(draw, new Box(182, 86, 458, 250));
+            label(draw, "이 조건에 해당하는 포켓몬이 없습니다.", 293, 203, MUTED, 296);
         }
         for (int i = page * PAGE_SIZE; i < Math.min((page + 1) * PAGE_SIZE, entries.size()); i++) {
-            int dex = entries.get(i);
-            boolean registered = overview.registered().contains(dex);
-            Integer candidates = overview.available().get(dex);
-            boolean ready = candidates != null;
-            String status = registered ? "등록 완료" : ready ? "납부 가능 · " + candidates + "마리" : "미등록";
-            Box box = card(i % PAGE_SIZE, 156);
-            cardBase(draw, box, ready && idle() ? () -> candidatePage(dex, 0) : null);
-            portrait(draw, box.x + 9, box.y + 8, 72, dex, Set.of(), delta);
-            label(draw, dexNumber(dex), box.x + 91, box.y + 12, MUTED, 100);
-            label(draw, speciesName(dex), box.x + 91, box.y + 31, TEXT, 100);
-            statusBadge(draw, box.x + 91, box.y + 53, 100, status, registered ? GREEN : ready ? GOLD : MUTED);
+            drawSpeciesEntry(draw, entries.get(i), i % PAGE_SIZE, delta);
         }
         pagination(draw, page, pages, () -> page--, () -> page++);
+    }
+
+    private void drawSpeciesEntry(DrawContext draw, int dex, int slot, float delta) {
+        boolean registered = overview.registered().contains(dex);
+        Integer candidates = overview.available().get(dex);
+        boolean ready = candidates != null;
+        int statusColor = registered ? GREEN : ready ? GOLD : MUTED;
+        String status = registered ? "등록 완료" : ready ? "납부 가능 · " + candidates + "마리" : "미등록";
+
+        Box box = new Box(182 + slot % 3 * 154, 86 + slot / 3 * 126, 150, 119);
+        cardBase(draw, box, ready && idle() ? () -> candidatePage(dex, 0) : null);
+        draw.fill(box.x + 7, box.y + 7, box.x + box.w - 7, box.y + 24, SHADOW);
+        draw.fill(box.x + 7, box.y + 7, box.x + 9, box.y + 24, statusColor);
+        label(draw, dexNumber(dex), box.x + 15, box.y + 11, TEXT, 117);
+
+        Box model = new Box(box.x + 7, box.y + 27, box.w - 14, 57);
+        inset(draw, model);
+        draw.fill(model.x + 5, model.y + 6, model.x + model.w - 4, model.y + model.h - 7, MODEL_WELL);
+        if (!models.render(draw, dex, Set.of(), box.x + (box.w - 58) / 2, model.y, 58, delta)) {
+            label(draw, "?", box.x + box.w / 2 - 3, model.y + 23, MUTED, 10);
+        }
+        label(draw, speciesName(dex), box.x + 9, box.y + 89, TEXT, box.w - 18);
+        label(draw, status, box.x + 9, box.y + 104, statusColor, box.w - 18);
     }
 
     private void renderCandidates(DrawContext draw, float delta) {
@@ -259,7 +284,7 @@ final class DexScreen extends Screen {
 
     private void renderRewards(DrawContext draw) {
         button(draw, new Box(20, 53, 87, 25), "‹ 도감", false, idle(), this::back);
-        label(draw, "등록 수를 채우면 보상을 한 번씩 받을 수 있습니다.", 119, 61, MUTED, 446);
+        label(draw, "1세대 완성과 1~9세대 전체 등록률을 각각 집계합니다.", 119, 61, MUTED, 509);
         for (int i = 0; i < overview.rewards().size(); i++) {
             RewardView reward = overview.rewards().get(i);
             int y = 89 + i * 50;
@@ -296,13 +321,12 @@ final class DexScreen extends Screen {
         return new Progress(0, total, 0);
     }
 
-    private void stat(DrawContext draw, int x, String title, Progress progress, boolean percent) {
-        inset(draw, new Box(x, 52, 193, 36));
-        label(draw, title, x + 8, 59, MUTED, 78);
+    private void stat(DrawContext draw, Box box, String title, Progress progress, boolean percent) {
+        inset(draw, box);
+        label(draw, title, box.x + 8, box.y + 7, MUTED, box.w - 16);
         String value = progress.count() + " / " + progress.total() + (percent ? " · " + progress.percent() + "%" : "");
-        int textWidth = textRenderer.getWidth(value);
-        label(draw, value, x + 185 - textWidth, 59, TEXT, textWidth);
-        bar(draw, x + 8, 76, 177, progress.percent());
+        label(draw, value, box.x + 8, box.y + 21, TEXT, box.w - 16);
+        bar(draw, box.x + 8, box.y + 32, box.w - 16, progress.percent());
     }
 
     private void bar(DrawContext draw, int x, int y, int width, int percent) {
@@ -377,7 +401,7 @@ final class DexScreen extends Screen {
 
     private void button(DrawContext draw, Box box, String value, boolean active, boolean enabled, Runnable click) {
         boolean hover = enabled && box.contains(mouseX, mouseY);
-        int background = active ? 0xff808183 : hover ? 0xff686a6c : enabled ? 0xff505153 : 0xff464749;
+        int background = active ? RED_PANEL : hover ? 0xff686a6c : enabled ? 0xff505153 : 0xff464749;
         draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, SHADOW);
         draw.fill(box.x + 1, box.y + 1, box.x + box.w - 1, box.y + box.h - 2, background);
         draw.fill(box.x + 1, box.y + 1, box.x + box.w - 1, box.y + 2, hover || active ? CASE_EDGE : RIDGE);
@@ -421,7 +445,7 @@ final class DexScreen extends Screen {
     }
 
     private static String dexNumber(int dex) {
-        return String.format(Locale.ROOT, "#%04d", dex);
+        return String.format(Locale.ROOT, "No. %04d", dex);
     }
 
     private static String speciesName(int dex) {

@@ -2,15 +2,11 @@ package kr.cobblerin.pokedex.client;
 
 import com.google.gson.Gson;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.lwjgl.glfw.GLFW;
 
 import static kr.cobblerin.pokedex.DexProtocol.*;
 
@@ -21,22 +17,6 @@ public final class DexClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        KeyBinding key = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.cobblemon_donation_pokedex.open", GLFW.GLFW_KEY_K, "key.categories.cobblemon_donation_pokedex"));
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (key.wasPressed()) {
-                if (client.player != null && client.currentScreen == null) {
-                    if (ClientPlayNetworking.canSend(Request.ID)) {
-                        var screen = new DexScreen();
-                        client.setScreen(screen);
-                        screen.refresh();
-                    } else {
-                        client.player.sendMessage(Text.literal("이 서버에서 납부 도감 HUD를 사용할 수 없습니다."), false);
-                    }
-                }
-            }
-        });
-
         ClientPlayNetworking.registerGlobalReceiver(Response.ID, (payload, context) -> {
             var client = context.client();
             if (payload.sequence() != 0 && !(client.currentScreen instanceof DexScreen)) {

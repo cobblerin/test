@@ -29,7 +29,7 @@ public final class DexProtocol implements ModInitializer {
     }
 
     public record Request(int sequence, String action, int species, int page, String value) implements CustomPayload {
-        public static final Id<Request> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "request_v3"));
+        public static final Id<Request> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "request_v4"));
         public static final PacketCodec<RegistryByteBuf, Request> CODEC = PacketCodec.tuple(
                 PacketCodecs.VAR_INT, Request::sequence,
                 PacketCodecs.string(16), Request::action,
@@ -44,7 +44,7 @@ public final class DexProtocol implements ModInitializer {
     }
 
     public record Response(int sequence, String json) implements CustomPayload {
-        public static final Id<Response> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "response_v3"));
+        public static final Id<Response> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "response_v4"));
         public static final PacketCodec<RegistryByteBuf, Response> CODEC = PacketCodec.tuple(
                 PacketCodecs.VAR_INT, Response::sequence, PacketCodecs.string(32767), Response::json, Response::new);
 

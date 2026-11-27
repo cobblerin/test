@@ -65,8 +65,9 @@ public final class DonationPokedex implements DedicatedServerModInitializer {
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
-            var command = dispatcher.register(literal("donationdex").executes(context ->
+            var command = dispatcher.register(literal("포켓몬도감").executes(context ->
                     DexNetworking.open(context.getSource().getPlayerOrThrow())));
+            dispatcher.register(literal("donationdex").executes(command.getCommand()));
             dispatcher.register(literal("pokedex").executes(command.getCommand()));
         });
     }
