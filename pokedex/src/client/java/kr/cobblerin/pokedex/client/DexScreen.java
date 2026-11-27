@@ -284,33 +284,51 @@ final class DexScreen extends Screen {
 
     private void renderRewards(DrawContext draw) {
         button(draw, new Box(20, 53, 87, 25), "‹ 도감", false, idle(), this::back);
-        label(draw, "1세대 완성과 1~9세대 전체 등록률을 각각 집계합니다.", 119, 61, MUTED, 509);
-        for (int i = 0; i < overview.rewards().size(); i++) {
-            RewardView reward = overview.rewards().get(i);
-            int y = 89 + i * 50;
-            surface(draw, new Box(20, y, 620, 44), false);
-            label(draw, reward.label(), 31, y + 8, TEXT, 139);
-            Progress progress = reward.progress();
-            label(draw, progress.count() + " / " + progress.total(), 31, y + 25, MUTED, 139);
-            bar(draw, 162, y + 19, 148, progress.percent());
-            String contents = "보상 미설정";
-            Identifier id = Identifier.tryParse(reward.item());
-            if (reward.count() > 0 && id != null && Registries.ITEM.containsId(id)) {
-                var stack = new ItemStack(Registries.ITEM.get(id), reward.count());
-                draw.drawItem(stack, 324, y + 13);
-                contents = stack.getName().getString() + " × " + reward.count();
+        label(draw, "각 조건을 달성하면 해당 보상을 한 번씩 받을 수 있습니다.", 119, 61, MUTED, 509);
+        inset(draw, new Box(20, 84, 410, 22));
+        label(draw, "1~9세대 개별 완성 보상", 29, 91, TEXT, 392);
+        inset(draw, new Box(440, 84, 200, 22));
+        label(draw, "1~9세대 합산 보상", 449, 91, TEXT, 182);
+
+        int combinedRow = 0;
+        for (RewardView reward : overview.rewards()) {
+            int generation = reward.generation();
+            if (generation == 0) {
+                renderReward(draw, reward, 440, combinedRow++);
+            } else if (generation <= 5) {
+                renderReward(draw, reward, 20, generation - 1);
+            } else {
+                renderReward(draw, reward, 230, generation - 6);
             }
-            label(draw, contents, 348, y + 18, MUTED, 170);
-            String status = switch (reward.status()) {
-                case CLAIMED -> "수령 완료";
-                case CLAIMABLE -> "수령하기";
-                case LOCKED -> "진행 중";
-                case UNCONFIGURED -> "보상 미설정";
-            };
-            boolean claimable = reward.status() == RewardStatus.CLAIMABLE;
-            button(draw, new Box(532, y + 10, 96, 24), status, claimable,
-                    idle() && claimable, () -> request(CLAIM, 0, 0, reward.id()));
         }
+    }
+
+    private void renderReward(DrawContext draw, RewardView reward, int x, int row) {
+        int y = 111 + row * 46;
+        surface(draw, new Box(x, y, 200, 42), false);
+        label(draw, reward.label(), x + 8, y + 5, TEXT, 107);
+        Progress progress = reward.progress();
+        String registered = progress.count() + " / " + progress.total();
+        label(draw, registered, x + 192 - textRenderer.getWidth(registered), y + 5, MUTED, 80);
+
+        String contents = "보상 미설정";
+        Identifier id = Identifier.tryParse(reward.item());
+        if (reward.count() > 0 && id != null && Registries.ITEM.containsId(id)) {
+            var stack = new ItemStack(Registries.ITEM.get(id), reward.count());
+            draw.drawItem(stack, x + 8, y + 16);
+            contents = stack.getName().getString() + " × " + reward.count();
+        }
+        label(draw, contents, x + 28, y + 21, MUTED, 101);
+        String status = switch (reward.status()) {
+            case CLAIMED -> "수령 완료";
+            case CLAIMABLE -> "수령하기";
+            case LOCKED -> "진행 중";
+            case UNCONFIGURED -> "보상 미설정";
+        };
+        boolean claimable = reward.status() == RewardStatus.CLAIMABLE;
+        button(draw, new Box(x + 132, y + 15, 60, 18), status, claimable,
+                idle() && claimable, () -> request(CLAIM, 0, 0, reward.id()));
+        bar(draw, x + 8, y + 34, 184, progress.percent());
     }
 
     private Progress progress(int generation) {

@@ -114,7 +114,8 @@ final class DexNetworking {
             if (status == RewardStatus.CLAIMABLE && stack.isEmpty()) {
                 status = RewardStatus.UNCONFIGURED;
             }
-            rewards.add(new RewardView(milestone.id(), milestone.label(), progress(count, milestone.required()),
+            rewards.add(new RewardView(milestone.id(), milestone.label(), milestone.generation(),
+                    progress(count, milestone.required()),
                     status,
                     stack.isEmpty() ? "" : Registries.ITEM.getId(stack.getItem()).toString(), stack.getCount()));
         }

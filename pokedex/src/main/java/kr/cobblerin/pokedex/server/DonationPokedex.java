@@ -28,8 +28,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,14 +41,9 @@ import static net.minecraft.server.command.CommandManager.literal;
 
 public final class DonationPokedex implements DedicatedServerModInitializer {
     static final Logger LOG = LoggerFactory.getLogger("DonationPokedex");
-    static final List<Milestone> MILESTONES = List.of(
-            new Milestone("gen1", "1세대 완성", 151, 1, "cobblemon:ultra_ball", 16),
-            new Milestone("total25", "전체 25%", 257, 0, "cobblemon:great_ball", 16),
-            new Milestone("total50", "전체 50%", 513, 0, "cobblemon:ultra_ball", 16),
-            new Milestone("total75", "전체 75%", 769, 0, "cobblemon:ultra_ball", 32),
-            new Milestone("total100", "전체 100%", 1025, 0, "cobblemon:master_ball", 1)
-    );
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    static final List<Milestone> MILESTONES = createMilestones();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
+    private static final String REWARD_CONFIG_VERSION = "_version";
     private static final Path REWARD_CONFIG = FabricLoader.getInstance().getConfigDir()
             .resolve("cobblemon_donation_pokedex/rewards.json");
 
@@ -72,18 +68,56 @@ public final class DonationPokedex implements DedicatedServerModInitializer {
         });
     }
 
+    private static List<Milestone> createMilestones() {
+        List<Milestone> milestones = new ArrayList<>();
+        for (int generation = 1; generation < ENDS.length; generation++) {
+            int required = ENDS[generation] - ENDS[generation - 1];
+            milestones.add(new Milestone("gen" + generation, generation + "세대 100%", required, generation,
+                    "cobblemon:ultra_ball", 16));
+        }
+        milestones.addAll(List.of(
+                new Milestone("total25", "전체 25%", 257, 0, "cobblemon:great_ball", 16),
+                new Milestone("total50", "전체 50%", 513, 0, "cobblemon:ultra_ball", 16),
+                new Milestone("total75", "전체 75%", 769, 0, "cobblemon:ultra_ball", 32),
+                new Milestone("total100", "전체 100%", 1025, 0, "cobblemon:master_ball", 1)
+        ));
+        return List.copyOf(milestones);
+    }
+
     private static void initializeRewards() {
         try {
             Files.createDirectories(REWARD_CONFIG.getParent());
-            if (Files.notExists(REWARD_CONFIG)) {
-                Map<String, Reward> defaults = new LinkedHashMap<>();
-                for (Milestone milestone : MILESTONES) {
-                    defaults.put(milestone.id(), new Reward(milestone.item(), milestone.count()));
-                }
-                Files.writeString(REWARD_CONFIG, GSON.toJson(defaults));
+            boolean fresh = Files.notExists(REWARD_CONFIG);
+            JsonObject config = fresh ? new JsonObject() : readRewardConfig();
+            if (config.has(REWARD_CONFIG_VERSION)) {
+                return;
             }
-        } catch (IOException exception) {
+            // Legacy files can omit existing rewards to disable them. Only add the new generations.
+            for (Milestone milestone : MILESTONES) {
+                if ((fresh || milestone.generation() >= 2) && !config.has(milestone.id())) {
+                    config.add(milestone.id(), GSON.toJsonTree(new Reward(milestone.item(), milestone.count())));
+                }
+            }
+            config.addProperty(REWARD_CONFIG_VERSION, 1);
+            Path temporary = Files.createTempFile(REWARD_CONFIG.getParent(), "rewards-", ".tmp");
+            try {
+                Files.writeString(temporary, GSON.toJson(config) + "\n");
+                Files.move(temporary, REWARD_CONFIG, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+        } catch (IOException | RuntimeException exception) {
             LOG.error("Could not initialize Pokédex rewards", exception);
+        }
+    }
+
+    private static JsonObject readRewardConfig() throws IOException {
+        try (var reader = Files.newBufferedReader(REWARD_CONFIG)) {
+            JsonObject config = GSON.fromJson(reader, JsonObject.class);
+            if (config == null) {
+                throw new IOException("Missing Pokédex reward settings in " + REWARD_CONFIG);
+            }
+            return config;
         }
     }
 
@@ -182,23 +216,20 @@ public final class DonationPokedex implements DedicatedServerModInitializer {
     }
 
     static ItemStack reward(Milestone milestone) throws IOException {
-        try (var reader = Files.newBufferedReader(REWARD_CONFIG)) {
-            var root = GSON.fromJson(reader, JsonObject.class);
-            var entry = root.get(milestone.id());
-            if (entry == null) {
-                return ItemStack.EMPTY;
-            }
-            Reward reward = GSON.fromJson(entry, Reward.class);
-            Identifier identifier = Identifier.tryParse(reward.item());
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
-                throw new IOException("Unknown reward item for " + milestone.id());
-            }
-            Item item = Registries.ITEM.get(identifier);
-            if (item == Items.AIR || reward.count() < 1 || reward.count() > item.getMaxCount()) {
-                throw new IOException("Invalid reward count or item for " + milestone.id());
-            }
-            return new ItemStack(item, reward.count());
+        var entry = readRewardConfig().get(milestone.id());
+        if (entry == null || entry.isJsonNull()) {
+            return ItemStack.EMPTY;
         }
+        Reward reward = GSON.fromJson(entry, Reward.class);
+        Identifier identifier = Identifier.tryParse(reward.item());
+        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            throw new IOException("Unknown reward item for " + milestone.id());
+        }
+        Item item = Registries.ITEM.get(identifier);
+        if (item == Items.AIR || reward.count() < 1 || reward.count() > item.getMaxCount()) {
+            throw new IOException("Invalid reward count or item for " + milestone.id());
+        }
+        return new ItemStack(item, reward.count());
     }
 
     static RewardStatus rewardEligibility(ServerPlayerEntity player, Milestone milestone, int registered) {

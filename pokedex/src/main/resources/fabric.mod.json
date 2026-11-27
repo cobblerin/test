@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "cobblemon_donation_pokedex",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "name": "Cobblemon Donation Pok\u00e9dex",
   "environment": "*",
   "entrypoints": {
