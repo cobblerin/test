@@ -1,5 +1,7 @@
 package kr.cobblerin.pokedex;
 
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;
@@ -10,19 +12,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-final class DexProtocol {
-    static final int[] ENDS = {0, 151, 251, 386, 493, 649, 721, 809, 905, 1025};
-    static final int TOTAL = ENDS[9];
-    static final int PAGE_SIZE = 6;
-    static final String OVERVIEW = "overview";
-    static final String CANDIDATES = "candidates";
-    static final String PREVIEW = "preview";
-    static final String DONATE = "donate";
-    static final String CLAIM = "claim";
+public final class DexProtocol implements ModInitializer {
+    public static final int[] ENDS = {0, 151, 251, 386, 493, 649, 721, 809, 905, 1025};
+    public static final int TOTAL = ENDS[9];
+    public static final int PAGE_SIZE = 6;
+    public static final String OVERVIEW = "overview";
+    public static final String CANDIDATES = "candidates";
+    public static final String PREVIEW = "preview";
+    public static final String DONATE = "donate";
+    public static final String CLAIM = "claim";
 
-    record Request(int sequence, String action, int species, int page, String value) implements CustomPayload {
-        static final Id<Request> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "request_v2"));
-        static final PacketCodec<RegistryByteBuf, Request> CODEC = PacketCodec.tuple(
+    @Override
+    public void onInitialize() {
+        PayloadTypeRegistry.playC2S().register(Request.ID, Request.CODEC);
+        PayloadTypeRegistry.playS2C().register(Response.ID, Response.CODEC);
+    }
+
+    public record Request(int sequence, String action, int species, int page, String value) implements CustomPayload {
+        public static final Id<Request> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "request_v3"));
+        public static final PacketCodec<RegistryByteBuf, Request> CODEC = PacketCodec.tuple(
                 PacketCodecs.VAR_INT, Request::sequence,
                 PacketCodecs.string(16), Request::action,
                 PacketCodecs.VAR_INT, Request::species,
@@ -35,9 +43,9 @@ final class DexProtocol {
         }
     }
 
-    record Response(int sequence, String json) implements CustomPayload {
-        static final Id<Response> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "response_v2"));
-        static final PacketCodec<RegistryByteBuf, Response> CODEC = PacketCodec.tuple(
+    public record Response(int sequence, String json) implements CustomPayload {
+        public static final Id<Response> ID = new Id<>(Identifier.of("cobblemon_donation_pokedex", "response_v3"));
+        public static final PacketCodec<RegistryByteBuf, Response> CODEC = PacketCodec.tuple(
                 PacketCodecs.VAR_INT, Response::sequence, PacketCodecs.string(32767), Response::json, Response::new);
 
         @Override
@@ -46,20 +54,21 @@ final class DexProtocol {
         }
     }
 
-    record View(Overview overview, CandidatePage candidates, Preview preview, String message) {}
+    public record View(Overview overview, CandidatePage candidates, Preview preview, String message) {}
 
-    record Overview(Set<Integer> registered, Map<Integer, Integer> available, List<RewardView> rewards) {}
+    public record Overview(Set<Integer> registered, Map<Integer, Integer> available, List<Progress> progress,
+                           List<RewardView> rewards) {}
 
-    record RewardView(String id, String label, int current, int required, boolean claimed, String item, int count) {
-        boolean claimable() {
-            return !claimed && current >= required && count > 0;
-        }
-    }
+    public record Progress(int count, int total, int percent) {}
 
-    record CandidatePage(int species, int page, int pages, List<Candidate> entries) {}
+    public enum RewardStatus { LOCKED, UNCONFIGURED, CLAIMABLE, CLAIMED }
 
-    record Candidate(String id, String nickname, String location, int level, boolean shiny,
+    public record RewardView(String id, String label, Progress progress, RewardStatus status, String item, int count) {}
+
+    public record CandidatePage(int species, int page, int pages, List<Candidate> entries) {}
+
+    public record Candidate(String id, String nickname, String location, int level, boolean shiny,
                      List<Integer> ivs, Set<String> aspects) {}
 
-    record Preview(int species, Candidate candidate, String token) {}
+    public record Preview(int species, Candidate candidate, String token) {}
 }

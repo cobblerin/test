@@ -1,4 +1,4 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.client;
 
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import net.minecraft.client.gui.DrawContext;
@@ -25,11 +25,13 @@ final class DexScreen extends Screen {
     private static final int MUTED = 0xffc4c7c9;
     private static final int GOLD = 0xffffdf93;
     private static final int GREEN = 0xff99d4a4;
-    private static final int FRAME = 0xff34383b;
-    private static final int RECESS = 0xff303437;
-    private static final int TRIM = 0xff797e81;
+    private static final int CASE = 0xff686a6c;
+    private static final int CASE_EDGE = 0xffb1b2b3;
+    private static final int SHADOW = 0xff202123;
+    private static final int RECESS = 0xff2d2e30;
+    private static final int RIDGE = 0xff87898b;
     private static final Box CLOSE = new Box(580, 15, 60, 22);
-    private static final Box PREVIOUS = new Box(514, 350, 32, 22);
+    private static final Box PREVIOUS = new Box(20, 350, 32, 22);
     private static final Box NEXT = new Box(608, 350, 32, 22);
     private final List<Control> controls = new ArrayList<>();
     private final DexModels models = new DexModels();
@@ -123,7 +125,7 @@ final class DexScreen extends Screen {
         mouseX = (mx - originX) / scale;
         mouseY = (my - originY) / scale;
         controls.clear();
-        draw.fill(0, 0, width, height, 0x99000000);
+        draw.fill(0, 0, width, height, 0x58000000);
         var matrices = draw.getMatrices();
         matrices.push();
         try {
@@ -142,9 +144,9 @@ final class DexScreen extends Screen {
             }
             String footer = waiting != 0 ? "서버 응답을 기다리는 중…" : message;
             if (footer != null) {
-                label(draw, footer, 20, 356, message == null ? MUTED : GOLD, 480);
+                label(draw, footer, 62, 357, message == null ? MUTED : GOLD, 248);
             } else if (mode != Mode.REWARDS && preview == null) {
-                label(draw, "휠로 페이지 이동", 20, 356, MUTED, 220);
+                label(draw, "휠로 페이지 이동", 62, 357, MUTED, 200);
             }
         } finally {
             matrices.pop();
@@ -152,28 +154,24 @@ final class DexScreen extends Screen {
     }
 
     private void frame(DrawContext draw) {
-        draw.fill(3, 4, WIDTH + 3, HEIGHT + 4, 0xc5121517);
-        draw.fill(0, 0, WIDTH, HEIGHT, FRAME);
-        draw.drawBorder(0, 0, WIDTH, HEIGHT, TRIM);
-        draw.fill(2, 2, WIDTH - 2, 45, 0xff43484c);
-        draw.fill(2, 44, WIDTH - 2, 45, 0xff222629);
-        draw.fill(20, 17, 23, 35, GOLD);
+        panelCase(draw, new Box(0, 0, WIDTH, HEIGHT));
+        inset(draw, new Box(11, 45, WIDTH - 22, 300));
+        draw.fill(20, 8, 184, 10, CASE_EDGE);
+        for (int i = 0; i < 6; i++) {
+            int x = 518 + i * 8;
+            draw.fill(x, 25, x + 3, 28, 0xff454648);
+        }
         String heading = switch (mode) {
             case CATALOGUE -> "포켓몬 납부 도감";
             case CANDIDATES -> "납부 개체 선택";
             case REWARDS -> "도감 완성 보상";
         };
-        label(draw, heading, 31, 22, TEXT, 240);
+        label(draw, heading, 23, 22, TEXT, 240);
     }
 
     private void renderCatalogue(DrawContext draw, float delta) {
-        int total = overview == null ? 0 : overview.registered().size();
-        int first = ENDS[generation - 1] + 1;
-        int last = ENDS[generation];
-        int count = overview == null ? 0 : (int) overview.registered().stream()
-                .filter(number -> number >= first && number <= last).count();
-        stat(draw, 20, "전체 등록", total, TOTAL, true);
-        stat(draw, 221, generation + "세대 등록", count, last - first + 1, false);
+        stat(draw, 20, "전체 등록", progress(0), true);
+        stat(draw, 221, generation + "세대 등록", progress(generation), false);
         button(draw, new Box(422, 52, 124, 36), "완성 보상", false, overview != null && idle(), () -> {
             mode = Mode.REWARDS;
             message = null;
@@ -198,15 +196,15 @@ final class DexScreen extends Screen {
         for (int i = page * PAGE_SIZE; i < Math.min((page + 1) * PAGE_SIZE, entries.size()); i++) {
             int dex = entries.get(i);
             boolean registered = overview.registered().contains(dex);
-            int available = overview.available().getOrDefault(dex, 0);
-            boolean ready = !registered && available > 0;
-            String status = registered ? "등록 완료" : ready ? "납부 가능 · " + available + "마리" : "미등록";
-            Box box = card(i % PAGE_SIZE);
+            Integer candidates = overview.available().get(dex);
+            boolean ready = candidates != null;
+            String status = registered ? "등록 완료" : ready ? "납부 가능 · " + candidates + "마리" : "미등록";
+            Box box = card(i % PAGE_SIZE, 156);
             cardBase(draw, box, ready && idle() ? () -> candidatePage(dex, 0) : null);
-            portrait(draw, box.x + 10, box.y + 12, 64, dex, Set.of(), delta);
-            label(draw, dexNumber(dex), box.x + 83, box.y + 13, MUTED, 106);
-            label(draw, speciesName(dex), box.x + 83, box.y + 32, TEXT, 106);
-            label(draw, status, box.x + 83, box.y + 55, registered ? GREEN : ready ? GOLD : MUTED, 106);
+            portrait(draw, box.x + 9, box.y + 8, 72, dex, Set.of(), delta);
+            label(draw, dexNumber(dex), box.x + 91, box.y + 12, MUTED, 100);
+            label(draw, speciesName(dex), box.x + 91, box.y + 31, TEXT, 100);
+            statusBadge(draw, box.x + 91, box.y + 53, 100, status, registered ? GREEN : ready ? GOLD : MUTED);
         }
         pagination(draw, page, pages, () -> page--, () -> page++);
     }
@@ -214,7 +212,8 @@ final class DexScreen extends Screen {
     private void renderCandidates(DrawContext draw, float delta) {
         int dex = candidates.species();
         button(draw, new Box(20, 53, 87, 25), "‹ 도감", false, idle(), this::back);
-        label(draw, dexNumber(dex) + "  " + speciesName(dex), 119, 61, TEXT, 343);
+        inset(draw, new Box(115, 53, 416, 25));
+        label(draw, dexNumber(dex) + "  " + speciesName(dex), 125, 61, TEXT, 396);
         button(draw, new Box(539, 53, 101, 25), "새로고침", false, idle(), () -> candidatePage(dex, candidates.page()));
         label(draw, "파티와 PC에서 납부할 개체를 선택하세요.", 20, 98, MUTED, 500);
         if (candidates.entries().isEmpty()) {
@@ -222,16 +221,15 @@ final class DexScreen extends Screen {
         }
         for (int i = 0; i < candidates.entries().size(); i++) {
             Candidate candidate = candidates.entries().get(i);
-            Box box = card(i);
+            Box box = card(i, 120);
             cardBase(draw, box, idle() ? () -> request(PREVIEW, dex, 0, candidate.id()) : null);
-            portrait(draw, box.x + 9, box.y + 12, 60, dex, candidate.aspects(), delta);
+            portrait(draw, box.x + 9, box.y + 8, 72, dex, candidate.aspects(), delta);
             String name = candidate.nickname().isEmpty() ? speciesName(dex) : candidate.nickname();
-            label(draw, name, box.x + 75, box.y + 12, TEXT, 116);
-            label(draw, candidate.location() + " · Lv." + candidate.level() + (candidate.shiny() ? " · 이로치" : ""),
-                    box.x + 75, box.y + 32, candidate.shiny() ? GOLD : MUTED, 116);
-            label(draw, ivs(candidate),
-                    box.x + 75, box.y + 52, MUTED, 116);
-            label(draw, "HP/공/방/특공/특방/스", box.x + 75, box.y + 68, MUTED, 116);
+            label(draw, name, box.x + 89, box.y + 10, TEXT, 103);
+            statusBadge(draw, box.x + 89, box.y + 24, 103, candidate.location() + " · Lv." + candidate.level()
+                    + (candidate.shiny() ? " · 이로치" : ""), candidate.shiny() ? GOLD : MUTED);
+            label(draw, "HP/공/방/특공/특방/스", box.x + 89, box.y + 56, MUTED, 103);
+            label(draw, ivs(candidate), box.x + 89, box.y + 69, TEXT, 103);
         }
         pagination(draw, candidates.page(), candidates.pages(),
                 () -> candidatePage(dex, candidates.page() - 1), () -> candidatePage(dex, candidates.page() + 1));
@@ -240,20 +238,18 @@ final class DexScreen extends Screen {
     private void renderPreview(DrawContext draw, float delta) {
         Candidate candidate = preview.candidate();
         int dex = preview.species();
-        draw.fill(98, 75, 570, 318, 0xff202426);
-        draw.fill(94, 71, 566, 314, 0xff454b4f);
-        draw.drawBorder(94, 71, 472, 243, TRIM);
-        label(draw, "포켓몬 납부 확인", 115, 93, GOLD, 340);
-        portrait(draw, 115, 116, 92, dex, candidate.aspects(), delta);
+        draw.fill(11, 45, WIDTH - 11, 345, 0x9a111111);
+        panelCase(draw, new Box(94, 71, 472, 243));
+        inset(draw, new Box(106, 111, 448, 144));
+        label(draw, "포켓몬 납부 확인", 115, 92, TEXT, 340);
+        portrait(draw, 115, 120, 96, dex, candidate.aspects(), delta);
         String name = candidate.nickname().isEmpty() ? speciesName(dex)
                 : candidate.nickname() + " (" + speciesName(dex) + ")";
-        label(draw, dexNumber(dex) + "  " + name, 224, 125, TEXT, 304);
-        label(draw, candidate.location() + " · Lv." + candidate.level() + (candidate.shiny() ? " · 이로치" : ""),
-                224, 146, MUTED, 304);
-        label(draw, "개체값 HP/공/방/특공/특방/스  " +
-                ivs(candidate),
-                224, 167, MUTED, 304);
-        label(draw, "개체 ID  " + candidate.id(), 224, 188, MUTED, 304);
+        detailRow(draw, 224, 120, "포켓몬", dexNumber(dex) + "  " + name);
+        detailRow(draw, 224, 144, "위치 · 레벨", candidate.location() + " · Lv." + candidate.level()
+                + (candidate.shiny() ? " · 이로치" : ""));
+        detailRow(draw, 224, 168, "개체값", ivs(candidate));
+        detailRow(draw, 224, 192, "개체 ID", candidate.id());
         label(draw, "확정하면 선택한 개체 한 마리가 소모되고 이 종이 영구 등록됩니다.",
                 115, 228, GOLD, 422);
         button(draw, new Box(340, 270, 92, 24), "취소", false, idle(), this::back);
@@ -269,8 +265,9 @@ final class DexScreen extends Screen {
             int y = 89 + i * 50;
             surface(draw, new Box(20, y, 620, 44), false);
             label(draw, reward.label(), 31, y + 8, TEXT, 139);
-            label(draw, reward.current() + " / " + reward.required(), 31, y + 25, MUTED, 139);
-            bar(draw, 162, y + 19, 148, reward.current(), reward.required());
+            Progress progress = reward.progress();
+            label(draw, progress.count() + " / " + progress.total(), 31, y + 25, MUTED, 139);
+            bar(draw, 162, y + 19, 148, progress.percent());
             String contents = "보상 미설정";
             Identifier id = Identifier.tryParse(reward.item());
             if (reward.count() > 0 && id != null && Registries.ITEM.containsId(id)) {
@@ -279,40 +276,54 @@ final class DexScreen extends Screen {
                 contents = stack.getName().getString() + " × " + reward.count();
             }
             label(draw, contents, 348, y + 18, MUTED, 170);
-            String status = reward.claimed() ? "수령 완료" : reward.claimable() ? "수령하기"
-                    : reward.current() < reward.required() ? "진행 중" : "보상 미설정";
-            button(draw, new Box(532, y + 10, 96, 24), status, reward.claimable(),
-                    idle() && reward.claimable(), () -> request(CLAIM, 0, 0, reward.id()));
+            String status = switch (reward.status()) {
+                case CLAIMED -> "수령 완료";
+                case CLAIMABLE -> "수령하기";
+                case LOCKED -> "진행 중";
+                case UNCONFIGURED -> "보상 미설정";
+            };
+            boolean claimable = reward.status() == RewardStatus.CLAIMABLE;
+            button(draw, new Box(532, y + 10, 96, 24), status, claimable,
+                    idle() && claimable, () -> request(CLAIM, 0, 0, reward.id()));
         }
     }
 
-    private void stat(DrawContext draw, int x, String title, int count, int total, boolean percent) {
-        Box box = new Box(x, 52, 193, 36);
-        surface(draw, box, false);
-        label(draw, title, x + 8, 59, MUTED, 78);
-        String value = count + " / " + total + (percent ? " · " + count * 100 / total + "%" : "");
-        int textWidth = textRenderer.getWidth(value);
-        label(draw, value, x + 185 - textWidth, 59, TEXT, textWidth);
-        bar(draw, x + 8, 76, 177, count, total);
+    private Progress progress(int generation) {
+        if (overview != null) {
+            return overview.progress().get(generation);
+        }
+        int total = generation == 0 ? TOTAL : ENDS[generation] - ENDS[generation - 1];
+        return new Progress(0, total, 0);
     }
 
-    private void bar(DrawContext draw, int x, int y, int width, int count, int total) {
-        draw.fill(x, y, x + width, y + 5, 0xff24282a);
-        int fill = width * Math.min(count, total) / total;
+    private void stat(DrawContext draw, int x, String title, Progress progress, boolean percent) {
+        inset(draw, new Box(x, 52, 193, 36));
+        label(draw, title, x + 8, 59, MUTED, 78);
+        String value = progress.count() + " / " + progress.total() + (percent ? " · " + progress.percent() + "%" : "");
+        int textWidth = textRenderer.getWidth(value);
+        label(draw, value, x + 185 - textWidth, 59, TEXT, textWidth);
+        bar(draw, x + 8, 76, 177, progress.percent());
+    }
+
+    private void bar(DrawContext draw, int x, int y, int width, int percent) {
+        draw.fill(x, y, x + width, y + 6, SHADOW);
+        int fill = width * percent / 100;
         if (fill > 0) {
-            draw.fill(x, y, x + fill, y + 5, GOLD);
+            draw.fill(x, y + 1, x + fill, y + 5, GOLD);
+            draw.fill(x, y + 4, x + fill, y + 5, 0xffb49854);
         }
     }
 
     private void pagination(DrawContext draw, int current, int total, Runnable previous, Runnable next) {
         button(draw, PREVIOUS, "‹", false, idle() && current > 0, previous);
         button(draw, NEXT, "›", false, idle() && current + 1 < total, next);
-        label(draw, (current + 1) + " / " + total, 554, 357, TEXT, 50);
+        String position = (current + 1) + " / " + total;
+        label(draw, position, (WIDTH - textRenderer.getWidth(position)) / 2, 357, TEXT, 82);
     }
 
     private void portrait(DrawContext draw, int x, int y, int size, int dex, Set<String> aspects, float delta) {
-        draw.fill(x, y, x + size, y + size, 0xff33373a);
-        draw.drawBorder(x, y, size, size, 0xff676c70);
+        inset(draw, new Box(x, y, size, size));
+        draw.fill(x + 6, y + size - 5, x + size - 6, y + size - 4, SHADOW);
         if (!models.render(draw, dex, aspects, x + 2, y + 2, size - 4, delta)) {
             label(draw, "?", x + size / 2 - 3, y + size / 2 - 4, MUTED, 10);
         }
@@ -326,20 +337,53 @@ final class DexScreen extends Screen {
         }
     }
 
-    private void surface(DrawContext draw, Box box, boolean hover) {
-        draw.fill(box.x + 2, box.y + 2, box.x + box.w + 2, box.y + box.h + 2, RECESS);
-        draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, hover ? 0xff606568 : 0xff4b5054);
-        draw.drawBorder(box.x, box.y, box.w, box.h, hover ? GOLD : 0xff686e72);
+    private static void panelCase(DrawContext draw, Box box) {
+        stepped(draw, new Box(box.x + 2, box.y + 4, box.w, box.h), 0xc5181819);
+        stepped(draw, box, SHADOW);
+        stepped(draw, new Box(box.x + 2, box.y + 2, box.w - 4, box.h - 4), CASE_EDGE);
+        stepped(draw, new Box(box.x + 4, box.y + 4, box.w - 8, box.h - 8), CASE);
+    }
+
+    private static void stepped(DrawContext draw, Box box, int color) {
+        draw.fill(box.x + 8, box.y, box.x + box.w - 8, box.y + box.h, color);
+        draw.fill(box.x + 3, box.y + 2, box.x + box.w - 3, box.y + box.h - 2, color);
+        draw.fill(box.x, box.y + 8, box.x + box.w, box.y + box.h - 8, color);
+    }
+
+    private static void inset(DrawContext draw, Box box) {
+        draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, SHADOW);
+        draw.fill(box.x + 2, box.y + 2, box.x + box.w - 1, box.y + box.h - 1, RECESS);
+        draw.fill(box.x + 1, box.y + box.h - 1, box.x + box.w, box.y + box.h, RIDGE);
+    }
+
+    private void detailRow(DrawContext draw, int x, int y, String field, String value) {
+        surface(draw, new Box(x, y, 317, 19), false);
+        draw.fill(x + 1, y + 2, x + 71, y + 17, RECESS);
+        label(draw, field, x + 7, y + 6, MUTED, 60);
+        label(draw, value, x + 81, y + 6, TEXT, 227);
+    }
+
+    private void statusBadge(DrawContext draw, int x, int y, int width, String status, int color) {
+        inset(draw, new Box(x, y, width, 18));
+        label(draw, status, x + 5, y + 5, color, width - 9);
+    }
+
+    private static void surface(DrawContext draw, Box box, boolean hover) {
+        draw.fill(box.x + 2, box.y + 2, box.x + box.w + 2, box.y + box.h + 2, SHADOW);
+        draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, hover ? 0xff626365 : 0xff4b4c4e);
+        draw.fill(box.x, box.y, box.x + box.w, box.y + 1, hover ? GOLD : RIDGE);
+        draw.fill(box.x, box.y + box.h - 1, box.x + box.w, box.y + box.h, 0xff38393b);
     }
 
     private void button(DrawContext draw, Box box, String value, boolean active, boolean enabled, Runnable click) {
         boolean hover = enabled && box.contains(mouseX, mouseY);
-        int background = active ? 0xff656055 : hover ? 0xff686e72 : 0xff4b5054;
-        draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, background);
-        draw.drawBorder(box.x, box.y, box.w, box.h, hover || active ? GOLD : TRIM);
-        int textWidth = Math.min(box.w - 8, textRenderer.getWidth(value));
+        int background = active ? 0xff808183 : hover ? 0xff686a6c : enabled ? 0xff505153 : 0xff464749;
+        draw.fill(box.x, box.y, box.x + box.w, box.y + box.h, SHADOW);
+        draw.fill(box.x + 1, box.y + 1, box.x + box.w - 1, box.y + box.h - 2, background);
+        draw.fill(box.x + 1, box.y + 1, box.x + box.w - 1, box.y + 2, hover || active ? CASE_EDGE : RIDGE);
+        int textWidth = Math.min(box.w - 10, textRenderer.getWidth(value));
         label(draw, value, box.x + (box.w - textWidth) / 2, box.y + (box.h - 8) / 2,
-                enabled ? active ? GOLD : TEXT : 0xffa2a5a7, box.w - 8);
+                enabled ? TEXT : 0xffa2a3a4, box.w - 10);
         if (enabled) {
             controls.add(new Control(box, click));
         }
@@ -352,8 +396,8 @@ final class DexScreen extends Screen {
         draw.drawText(textRenderer, value, x, y, color, false);
     }
 
-    private static Box card(int index) {
-        return new Box(20 + index % 3 * 210, 157 + index / 3 * 94, 200, 86);
+    private static Box card(int index, int top) {
+        return new Box(20 + index % 3 * 210, top + index / 3 * 94, 200, 87);
     }
 
     private List<Integer> catalogue() {

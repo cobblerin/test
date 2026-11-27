@@ -1,4 +1,4 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.server;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

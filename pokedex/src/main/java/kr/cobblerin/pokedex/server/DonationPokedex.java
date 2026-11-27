@@ -1,4 +1,4 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.server;
 
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.api.storage.PokemonStore;
@@ -8,7 +8,7 @@ import com.cobblemon.mod.common.pokemon.activestate.InactivePokemonState;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import net.fabricmc.api.ModInitializer;
+import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -35,9 +35,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import static kr.cobblerin.pokedex.DexProtocol.ENDS;
+import static kr.cobblerin.pokedex.DexProtocol.RewardStatus;
 import static net.minecraft.server.command.CommandManager.literal;
 
-public final class DonationPokedex implements ModInitializer {
+public final class DonationPokedex implements DedicatedServerModInitializer {
     static final Logger LOG = LoggerFactory.getLogger("DonationPokedex");
     static final List<Milestone> MILESTONES = List.of(
             new Milestone("gen1", "1세대 완성", 151, 1, "cobblemon:ultra_ball", 16),
@@ -51,7 +52,7 @@ public final class DonationPokedex implements ModInitializer {
             .resolve("cobblemon_donation_pokedex/rewards.json");
 
     @Override
-    public void onInitialize() {
+    public void onInitializeServer() {
         DexNetworking.register();
         ServerLifecycleEvents.SERVER_STARTING.register(server -> initializeRewards());
 
@@ -199,13 +200,24 @@ public final class DonationPokedex implements ModInitializer {
         }
     }
 
+    static RewardStatus rewardEligibility(ServerPlayerEntity player, Milestone milestone, int registered) {
+        if (player.getCommandTags().contains(milestone.tag())) {
+            return RewardStatus.CLAIMED;
+        }
+        if (registered < milestone.required()) {
+            return RewardStatus.LOCKED;
+        }
+        return RewardStatus.CLAIMABLE;
+    }
+
     static String claim(ServerPlayerEntity player, Map<Integer, UUID> registrations, Milestone milestone)
             throws IOException {
-        String tag = milestone.tag();
-        if (player.getCommandTags().contains(tag)) {
+        int count = registered(registrations, milestone.generation());
+        RewardStatus status = rewardEligibility(player, milestone, count);
+        if (status == RewardStatus.CLAIMED) {
             return "이미 수령한 보상입니다.";
         }
-        if (registered(registrations, milestone.generation()) < milestone.required()) {
+        if (status == RewardStatus.LOCKED) {
             return "보상 수령 조건을 아직 달성하지 않았습니다.";
         }
         ItemStack reward = reward(milestone);
@@ -218,7 +230,7 @@ public final class DonationPokedex implements ModInitializer {
             return "인벤토리에 빈 칸을 한 칸 만들어 주세요.";
         }
         // Both inventory and command tags are saved in the same vanilla player data file.
-        if (!player.addCommandTag(tag)) {
+        if (!player.addCommandTag(milestone.tag())) {
             return "보상 수령 상태를 기록할 수 없습니다.";
         }
         inventory.setStack(slot, reward);

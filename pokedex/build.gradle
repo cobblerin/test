@@ -2,7 +2,7 @@ plugins {
     id 'fabric-loom' version '1.10.5'
 }
 
-version = '0.2.0'
+version = '0.3.0'
 group = 'kr.cobblerin'
 
 repositories {
@@ -49,5 +49,40 @@ loom {
             sourceSet sourceSets.main
             sourceSet sourceSets.client
         }
+    }
+}
+
+def remapped = tasks.named('remapJar') {
+    destinationDirectory = layout.buildDirectory.dir('intermediates/remap')
+}
+def descriptor = layout.projectDirectory.file('src/main/resources/fabric.mod.json')
+
+['server', 'client'].each { side ->
+    def metadataDir = layout.buildDirectory.dir("generated/distribution/${side}")
+    def writeMetadata = tasks.register("write${side.capitalize()}Metadata") {
+        inputs.file(descriptor)
+        outputs.dir(metadataDir)
+        doLast {
+            def metadata = new groovy.json.JsonSlurper().parse(descriptor.asFile)
+            metadata.environment = side
+            metadata.entrypoints.keySet().retainAll(['main', side])
+            def output = metadataDir.get().file('fabric.mod.json').asFile
+            output.parentFile.mkdirs()
+            output.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)) + '\n'
+        }
+    }
+
+    def distribution = tasks.register("${side}Jar", Jar) {
+        dependsOn(remapped, writeMetadata)
+        archiveBaseName = "${rootProject.name}-${side}"
+        destinationDirectory = layout.buildDirectory.dir('libs')
+        from({ zipTree(remapped.get().archiveFile.get().asFile) }) {
+            exclude 'META-INF/MANIFEST.MF', 'fabric.mod.json'
+            exclude(side == 'server' ? ['kr/cobblerin/pokedex/client/**', 'assets/**'] : ['kr/cobblerin/pokedex/server/**'])
+        }
+        from(metadataDir)
+    }
+    tasks.named('assemble') {
+        dependsOn(distribution)
     }
 }

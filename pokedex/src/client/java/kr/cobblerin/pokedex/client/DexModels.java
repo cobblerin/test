@@ -1,4 +1,4 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.client;
 
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.client.gui.summary.widgets.ModelWidget;
@@ -34,12 +34,12 @@ final class DexModels {
         int pixels = Math.max(1, Math.round(Math.min(end.x - start.x, end.y - start.y)));
         try {
             var widget = models.computeIfAbsent(key, ignored -> new ModelWidget(screenX, screenY, pixels, pixels,
-                    new RenderablePokemon(species, aspects, ItemStack.EMPTY), pixels / 56f, 325f,
+                    new RenderablePokemon(species, aspects, ItemStack.EMPTY), pixels / 45f, 325f,
                     -pixels * 0.15, false, false, 15));
             widget.setDimensions(pixels, pixels);
             widget.setX(screenX);
             widget.setY(screenY);
-            widget.setBaseScale(pixels / 56f);
+            widget.setBaseScale(pixels / 45f);
             widget.setOffsetY(-pixels * 0.15);
             draw.draw();
             matrices.push();
@@ -53,7 +53,7 @@ final class DexModels {
             return true;
         } catch (RuntimeException exception) {
             unavailable.add(key);
-            DonationPokedex.LOG.debug("Could not render Pokédex model {}", dex, exception);
+            DexClient.LOG.debug("Could not render Pokédex model {}", dex, exception);
             return false;
         }
     }

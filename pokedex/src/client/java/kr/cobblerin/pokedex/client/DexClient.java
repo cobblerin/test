@@ -1,4 +1,4 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.client;
 
 import com.google.gson.Gson;
 import net.fabricmc.api.ClientModInitializer;
@@ -8,11 +8,14 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.lwjgl.glfw.GLFW;
 
 import static kr.cobblerin.pokedex.DexProtocol.*;
 
 public final class DexClient implements ClientModInitializer {
+    static final Logger LOG = LoggerFactory.getLogger("DonationPokedexHUD");
     private static final Gson GSON = new Gson();
     private static int sequence;
 
@@ -47,7 +50,7 @@ public final class DexClient implements ClientModInitializer {
                     openFromCommand(client, view);
                 }
             } catch (RuntimeException exception) {
-                DonationPokedex.LOG.warn("Could not read Pokédex HUD response", exception);
+                LOG.warn("Could not read Pokédex HUD response", exception);
             }
         });
     }

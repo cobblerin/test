@@ -1,9 +1,8 @@
-package kr.cobblerin.pokedex;
+package kr.cobblerin.pokedex.server;
 
 import com.cobblemon.mod.common.api.pokemon.stats.Stats;
 import com.cobblemon.mod.common.pokemon.Pokemon;
 import com.google.gson.Gson;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.item.ItemStack;
@@ -20,7 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static kr.cobblerin.pokedex.DexProtocol.*;
-import static kr.cobblerin.pokedex.DonationPokedex.*;
+import static kr.cobblerin.pokedex.server.DonationPokedex.*;
 
 final class DexNetworking {
     private static final Gson GSON = new Gson();
@@ -28,8 +27,6 @@ final class DexNetworking {
     private static final Map<UUID, Offer> OFFERS = new HashMap<>();
 
     static void register() {
-        PayloadTypeRegistry.playC2S().register(Request.ID, Request.CODEC);
-        PayloadTypeRegistry.playS2C().register(Response.ID, Response.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Request.ID, (request, context) -> handle(context.player(), request));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> OFFERS.remove(handler.player.getUuid()));
     }
@@ -98,6 +95,12 @@ final class DexNetworking {
                 }
             }
         }
+        List<Progress> progress = new ArrayList<>(ENDS.length);
+        progress.add(progress(registered(records, 0), TOTAL));
+        for (int generation = 1; generation < ENDS.length; generation++) {
+            progress.add(progress(registered(records, generation), ENDS[generation] - ENDS[generation - 1]));
+        }
+
         List<RewardView> rewards = new ArrayList<>();
         for (var milestone : MILESTONES) {
             ItemStack stack = ItemStack.EMPTY;
@@ -106,11 +109,20 @@ final class DexNetworking {
             } catch (IOException | RuntimeException exception) {
                 LOG.warn("Invalid Pokédex reward {}", milestone.id(), exception);
             }
-            rewards.add(new RewardView(milestone.id(), milestone.label(), registered(records, milestone.generation()),
-                    milestone.required(), player.getCommandTags().contains(milestone.tag()),
+            int count = progress.get(milestone.generation()).count();
+            RewardStatus status = rewardEligibility(player, milestone, count);
+            if (status == RewardStatus.CLAIMABLE && stack.isEmpty()) {
+                status = RewardStatus.UNCONFIGURED;
+            }
+            rewards.add(new RewardView(milestone.id(), milestone.label(), progress(count, milestone.required()),
+                    status,
                     stack.isEmpty() ? "" : Registries.ITEM.getId(stack.getItem()).toString(), stack.getCount()));
         }
-        return new Overview(records.keySet(), available, rewards);
+        return new Overview(records.keySet(), available, progress, rewards);
+    }
+
+    private static Progress progress(int count, int total) {
+        return new Progress(count, total, Math.min(100, count * 100 / total));
     }
 
     private static CandidatePage candidatePage(ServerPlayerEntity player, Map<Integer, UUID> records, Request request) {
